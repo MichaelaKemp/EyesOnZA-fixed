@@ -8,6 +8,9 @@ import { db } from "../../firebaseConfig";
 export default function ReportDetails() {
   const { id } = useLocalSearchParams(); 
   const router = useRouter();
+  const params = useLocalSearchParams();
+  const incomingLat = params?.lat as string | undefined;
+  const incomingLng = params?.lng as string | undefined;
   const [report, setReport] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -21,12 +24,14 @@ export default function ReportDetails() {
           setReport({ id: docSnap.id, ...docSnap.data() });
         } else {
           Alert.alert("Not Found", "This report no longer exists.");
-          router.back();
+          const qp = incomingLat && incomingLng ? `?fromReport=true&lat=${incomingLat}&lng=${incomingLng}` : "?fromReport=true";
+          router.replace((`/(tabs)/map${qp}`) as any);
         }
       } catch (error) {
-        console.error("Error fetching report:", error);
-        Alert.alert("Error", "Failed to load report.");
-        router.back();
+  console.error("Error fetching report:", error);
+  Alert.alert("Error", "Failed to load report.");
+  const qpErr = incomingLat && incomingLng ? `?fromReport=true&lat=${incomingLat}&lng=${incomingLng}` : "?fromReport=true";
+  router.replace((`/(tabs)/map${qpErr}`) as any);
       } finally {
         setLoading(false);
       }
@@ -48,19 +53,24 @@ export default function ReportDetails() {
       <ScrollView contentContainerStyle={styles.container}>
         <Text style={styles.title}>{report.title}</Text>
         <Text style={styles.date}>
-          {report.createdAt?.toDate
+        {report.incidentTime?.toDate
+            ? new Date(report.incidentTime.toDate()).toLocaleString()
+            : report.createdAt?.toDate
             ? new Date(report.createdAt.toDate()).toLocaleString()
             : "Unknown date"}
         </Text>
         <Text style={styles.description}>{report.description}</Text>
 
-        {report.userEmail && (
-          <Text style={styles.email}>Reported by: {report.userEmail}</Text>
-        )}
+        <Text style={styles.email}>
+        Reported by: {report.userName || "Anonymous"}
+        </Text>
 
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => router.back()}
+          onPress={() => {
+              const qpBack = incomingLat && incomingLng ? `?fromReport=true&lat=${incomingLat}&lng=${incomingLng}` : "?fromReport=true";
+              router.replace((`/(tabs)/map${qpBack}`) as any);
+            }}
         >
           <Text style={styles.backButtonText}>← Back to Map</Text>
         </TouchableOpacity>

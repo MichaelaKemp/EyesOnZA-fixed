@@ -1,10 +1,11 @@
-import { Picker } from "@react-native-picker/picker"; // ✅ Dropdown picker
+import DateTimePicker from "@react-native-community/datetimepicker";
+import { Picker } from "@react-native-picker/picker";
 import Constants from "expo-constants";
 import * as Location from "expo-location";
 import { useRouter } from "expo-router";
-import { addDoc, collection, serverTimestamp } from "firebase/firestore";
+import { addDoc, collection, serverTimestamp, Timestamp } from "firebase/firestore";
 import React, { useState } from "react";
-import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, } from "react-native";
+import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { GooglePlacesAutocomplete } from "react-native-google-places-autocomplete";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../../context/AuthContext";
@@ -18,9 +19,21 @@ export default function ReportScreen() {
   const [latitude, setLatitude] = useState<string | null>(null);
   const [longitude, setLongitude] = useState<string | null>(null);
   const [useManualLocation, setUseManualLocation] = useState(false);
+  const [anonymous, setAnonymous] = useState(false);
+  const [incidentTime, setIncidentTime] = useState<Date | null>(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+
+
   const { user } = useAuth();
   const router = useRouter();
   const GOOGLE_MAPS_API_KEY = Constants.expoConfig?.extra?.GOOGLE_MAPS_API_KEY;
+
+const userName = anonymous
+  ? "Anonymous"
+  : user?.name
+  ? `${user.name} ${user.surname ? user.surname.charAt(0) + "." : ""}`
+  : user?.email?.split("@")[0] || "Anonymous";
 
   const getCurrentLocation = async () => {
     try {
@@ -83,17 +96,21 @@ export default function ReportScreen() {
     }
 
     const locationLabel = location || "Current Location";
+    const finalTime = incidentTime ? Timestamp.fromDate(incidentTime) : serverTimestamp();
+    const userEmail = anonymous ? "anonymous" : user?.email || "anonymous";
 
     try {
-      await addDoc(collection(db, "reports"), {
-        title,
-        description,
-        location: locationLabel,
-        latitude: parseFloat(latitude),
-        longitude: parseFloat(longitude),
-        userEmail: user?.email || "anonymous",
-        createdAt: serverTimestamp(),
-      });
+    await addDoc(collection(db, "reports"), {
+    title,
+    description,
+    location: locationLabel,
+    latitude: parseFloat(latitude),
+    longitude: parseFloat(longitude),
+    userName,
+    userEmail: anonymous ? null : user?.email || null,
+    incidentTime: finalTime,
+    createdAt: serverTimestamp(),
+    });
 
       Alert.alert("Report Submitted", "Thank you for helping keep your community safe!");
       setCrimeType("");
@@ -102,6 +119,7 @@ export default function ReportScreen() {
       setLocation("");
       setLatitude(null);
       setLongitude(null);
+      setIncidentTime(null);
       router.replace("/(tabs)/map");
     } catch (error) {
       console.error("Report error:", error);
@@ -155,6 +173,59 @@ export default function ReportScreen() {
             onChangeText={setDescription}
           />
 
+        <View style={{ marginTop: 10 }}>
+        <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={() => setShowDatePicker(true)}
+        >
+            <Text style={styles.secondaryButtonText}>
+            {incidentTime
+                ? `🕓 ${incidentTime.toLocaleString()}`
+                : "Set Incident Time (optional)"}
+            </Text>
+        </TouchableOpacity>
+        </View>
+        {showDatePicker && (
+        <DateTimePicker
+            value={incidentTime || new Date()}
+            mode="date"
+            display={Platform.OS === "ios" ? "inline" : "default"}
+            onChange={(event, selectedDate) => {
+            if (event.type === "dismissed") {
+                setShowDatePicker(false);
+                return;
+            }
+            if (selectedDate) {
+                setIncidentTime(selectedDate);
+                setShowDatePicker(false);
+                setTimeout(() => setShowTimePicker(true), 300);
+            }
+            }}
+        />
+        )}
+
+        {showTimePicker && (
+        <DateTimePicker
+            value={incidentTime || new Date()}
+            mode="time"
+            is24Hour
+            display={Platform.OS === "ios" ? "inline" : "default"}
+            onChange={(event, selectedTime) => {
+            if (event.type === "dismissed") {
+                setShowTimePicker(false);
+                return;
+            }
+            if (selectedTime && incidentTime) {
+                const combined = new Date(incidentTime);
+                combined.setHours(selectedTime.getHours());
+                combined.setMinutes(selectedTime.getMinutes());
+                setIncidentTime(combined);
+            }
+            setShowTimePicker(false);
+            }}
+        />
+        )}
+
           {!useManualLocation ? (
             <TouchableOpacity
               style={[styles.input, { justifyContent: "center" }]}
@@ -201,6 +272,11 @@ export default function ReportScreen() {
             <Text style={styles.secondaryButtonText}>Use My Current Location</Text>
           </TouchableOpacity>
 
+          <View style={styles.switchRow}>
+            <Text style={styles.label}>Submit Anonymously</Text>
+            <Switch value={anonymous} onValueChange={setAnonymous} />
+          </View>
+
           <TouchableOpacity style={styles.button} onPress={handleSubmit}>
             <Text style={styles.buttonText}>Submit Report</Text>
           </TouchableOpacity>
@@ -218,8 +294,10 @@ const styles = StyleSheet.create({
   picker: { height: 50, width: "100%" },
   input: { borderWidth: 1, borderColor: "#ccc", borderRadius: 8, padding: 12, marginVertical: 8 },
   coords: { textAlign: "center", color: "#555", marginVertical: 5 },
-  button: { backgroundColor: "#d32f2f", padding: 15, borderRadius: 8, marginTop: 20},
+  timeRow: { marginVertical: 8 },
+  switchRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginVertical: 12 },
+  button: { backgroundColor: "#d32f2f", padding: 15, borderRadius: 8, marginTop: 20 },
   buttonText: { color: "#fff", fontWeight: "600", textAlign: "center" },
-  secondaryButton: { backgroundColor: "#eee", padding: 15, borderRadius: 8, marginTop: 10 },
+  secondaryButton: { backgroundColor: "#eee", padding: 12, borderRadius: 8, marginTop: 6 },
   secondaryButtonText: { color: "#333", fontWeight: "600", textAlign: "center" },
 });
