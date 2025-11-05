@@ -158,7 +158,7 @@ Built with **Expo** and **React Native**, EyesOnZA’s frontend focuses on clari
 
 <p align="center">
   <img src="./assets/mockups/login.jpg" alt="Login Screen" width="220"/>
-  <img src="./aseets/mockups/signup.jpg" alt="Signup Screen" width="220"/>
+  <img src="./assets/mockups/signup.jpg" alt="Signup Screen" width="220"/>
   <img src="./assets/mockups/report_details.jpg" alt="Report Details Screen" width="220"/>
 </p>
 
