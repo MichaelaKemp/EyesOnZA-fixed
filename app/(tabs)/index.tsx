@@ -4,7 +4,7 @@ import * as Location from "expo-location";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { collection, onSnapshot } from "firebase/firestore";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Animated, Easing, Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, Animated, Easing, Image, Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import MapView, { Heatmap, Marker, PROVIDER_GOOGLE, Region } from "react-native-maps";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../context/AuthContext";
@@ -30,7 +30,6 @@ export default function MapScreen() {
   const [zoomScale, setZoomScale] = useState(1);
   const [currentRegion, setCurrentRegion] = useState<Region | null>(null);
   const [autoCenter, setAutoCenter] = useState<boolean>(true);
-  const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
 
   const router = useRouter();
   const mapRef = useRef<MapView>(null);
@@ -280,12 +279,6 @@ export default function MapScreen() {
   const { logout } = useAuth();
   const insets = useSafeAreaInsets();
 
-  const handleLogout = () => {
-    setSidebarOpen(false);
-    logout();
-    router.replace("/login");
-  };
-
   const handleViewReport = (id: string) => {
     const lat = userRegion?.latitude ?? userMarker?.latitude;
     const lng = userRegion?.longitude ?? userMarker?.longitude;
@@ -326,11 +319,15 @@ export default function MapScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Controls */}
-      <TouchableOpacity style={[styles.hamburgerButton, { top: insets.top + 8 }]} onPress={() => setSidebarOpen(true)}>
-        <Ionicons name="menu" size={22} color="#fff" />
-      </TouchableOpacity>
       <View style={[styles.controls, { top: insets.top + 8 }]}>
+        <View style={styles.logoWrapper}>
+          <Image
+            source={require("../../assets/images/EyesOnZA-logo.png")}
+            style={styles.logo}
+            resizeMode="contain"
+          />
+        </View>
+
         <View style={styles.pickerContainer}>
           <Picker
             selectedValue={selectedCrime}
@@ -362,7 +359,9 @@ export default function MapScreen() {
       {loadingLocation && (
         <View style={styles.loadingOverlay}>
           <ActivityIndicator size="large" color="#d32f2f" />
-          <Text style={{ marginTop: 10, color: "#555" }}>Getting your location...</Text>
+          <Text style={{ marginTop: 10, color: "#555" }}>
+            Getting your location...
+          </Text>
         </View>
       )}
 
@@ -371,25 +370,23 @@ export default function MapScreen() {
         provider={PROVIDER_GOOGLE}
         style={StyleSheet.absoluteFillObject}
         onMapReady={() => setMapReady(true)}
-          onRegionChangeComplete={handleRegionChange}
-          onPanDrag={() => {
-            setAutoCenter(false);
-          }}
-          initialRegion={
-            startFromMiddle
-              ? {
-                  latitude: -30.5595,
-                  longitude: 22.9375,
-                  latitudeDelta: 25,
-                  longitudeDelta: 25,
-                }
-              : userRegion || {
-                  latitude: -30.5595,
-                  longitude: 22.9375,
-                  latitudeDelta: 25,
-                  longitudeDelta: 25,
-                }
-          }
+        onRegionChangeComplete={handleRegionChange}
+        onPanDrag={() => setAutoCenter(false)}
+        initialRegion={
+          startFromMiddle
+            ? {
+                latitude: -30.5595,
+                longitude: 22.9375,
+                latitudeDelta: 25,
+                longitudeDelta: 25,
+              }
+            : userRegion || {
+                latitude: -30.5595,
+                longitude: 22.9375,
+                latitudeDelta: 25,
+                longitudeDelta: 25,
+              }
+        }
       >
         {heatmapMode ? (
           validPoints.length > 0 && (
@@ -442,52 +439,30 @@ export default function MapScreen() {
         )}
       </MapView>
 
-      {sidebarOpen && (
+      {userRegion && (
         <>
-          <TouchableOpacity style={styles.sidebarOverlay} onPress={() => setSidebarOpen(false)} />
-          <View style={styles.sidebar}>
-            <Text style={styles.sidebarHeader}>Menu</Text>
-            <TouchableOpacity
-              style={styles.sidebarItem}
-              onPress={() => {
-                setSidebarOpen(false);
-                router.replace(("/(tabs)/index") as any);
-              }}
-            >
-              <Text style={styles.sidebarItemText}>Home</Text>
-            </TouchableOpacity>
+          <TouchableOpacity style={styles.recenterButton} onPress={recenterMap}>
+            <Ionicons name="locate-outline" size={24} color="#fff" />
+          </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.sidebarItem}
-              onPress={() => {
-                setSidebarOpen(false);
-                router.push("/report");
-              }}
-            >
-              <Text style={styles.sidebarItemText}>Report an Incident</Text>
-            </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.aiButton}
+            onPress={() => router.push("/(tabs)/ai")}
+          >
+            <Ionicons name="chatbubble-ellipses-outline" size={22} color="#fff" />
+          </TouchableOpacity>
 
-            <TouchableOpacity style={styles.sidebarItem} onPress={handleLogout}>
-              <Text style={[styles.sidebarItemText, { color: "#d32f2f" }]}>Sign Out</Text>
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity
+            style={styles.logoutButton}
+            onPress={() => {
+              logout();
+              router.replace("/login");
+            }}
+          >
+            <Ionicons name="log-out-outline" size={22} color="#fff" />
+          </TouchableOpacity>
         </>
       )}
-
-    {userRegion && (
-    <>
-        <TouchableOpacity
-        style={styles.aiButton}
-        onPress={() => router.push("/(tabs)/ai")}
-        >
-        <Ionicons name="chatbubble-ellipses-outline" size={22} color="#fff" />
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.recenterButton} onPress={recenterMap}>
-        <Ionicons name="locate-outline" size={24} color="#fff" />
-        </TouchableOpacity>
-    </>
-    )}
 
       {hasNoData && !loadingLocation && (
         <View style={styles.noData}>
@@ -500,9 +475,7 @@ export default function MapScreen() {
       <View style={styles.overlay}>
         <Text style={styles.overlayText}>
           {heatmapMode
-            ? `Heatmap: ${
-                selectedCrime === "All" ? "All Crimes" : selectedCrime
-              }`
+            ? `Heatmap: ${selectedCrime === "All" ? "All Crimes" : selectedCrime}`
             : `Showing ${inViewCount} ${
                 selectedCrime === "All" ? "" : selectedCrime + " "
               }incidents${currentRegion ? " in view" : ""}`}
@@ -514,13 +487,11 @@ export default function MapScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  controls: { position: "absolute", top: 50, left: 64, right: 12, zIndex: 40, flexDirection: "row", alignItems: "center", backgroundColor: "rgba(255,255,255,0.95)", borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4, shadowColor: "#000", shadowOpacity: 0.15, shadowRadius: 4, elevation: 5, overflow: "visible"  }, pickerContainer: { flex: 1, borderWidth: 1, borderColor: "#ccc", borderRadius: 8, marginRight: 8, height: 50, backgroundColor: "#fff", overflow: "visible" },
   picker: { height: 50, width: "100%", fontSize: 15, color: "#000", marginTop: Platform.OS === "android" ? -4 : 0 },
   toggleButton: { backgroundColor: "#d32f2f", height: 48, borderRadius: 8, paddingHorizontal: 10, alignItems: "center", justifyContent: "center", minWidth: 85, elevation: 3},
   toggleActive: { backgroundColor: "#555" },
   toggleText: { color: "#fff",  fontWeight: "600", fontSize: 15 },
   loadingOverlay: { position: "absolute", top: "45%", left: 0, right: 0, alignItems: "center" },
-  recenterButton: {  position: "absolute", bottom: 100, right: 20, backgroundColor: "#d32f2f", padding: 14, borderRadius: 50, elevation: 5 },
   noData: { position: "absolute", top: "50%", left: 0, right: 0, alignItems: "center" },
   noDataText: { color: "#555", backgroundColor: "rgba(255,255,255,0.9)", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
   overlay: { position: "absolute", bottom: 20, alignSelf: "center", backgroundColor: "rgba(0,0,0,0.6)", paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10 },
@@ -529,10 +500,12 @@ const styles = StyleSheet.create({
   pulseRing: { position: "absolute", width: 18, height: 18, borderRadius: 9, backgroundColor: "rgba(66,133,244,0.3)", borderWidth: 1, borderColor: "rgba(66,133,244,0.5)" },
   pulseCore: { width: 10, height: 10, borderRadius: 5, backgroundColor: "#4285F4", borderWidth: 2, borderColor: "#fff"},
   hamburgerButton: {position: "absolute", left: 12, top: 44, width: 48, height: 48, borderRadius: 10, backgroundColor: "#d32f2f", justifyContent: "center", alignItems: "center", zIndex: 50, shadowColor: "#000", shadowOpacity: 0.15, shadowRadius: 4, elevation: 6},
-  sidebarOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.3)', zIndex: 50 },
-  sidebar: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 260, backgroundColor: '#fff', paddingTop: 60, zIndex: 60, elevation: 10 },
-  sidebarHeader: { fontSize: 20, fontWeight: '700', paddingHorizontal: 16, paddingBottom: 12 },
-  sidebarItem: { paddingVertical: 14, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: '#eee' },
-  sidebarItemText: { fontSize: 16, color: '#333' },
-  aiButton: { position: "absolute", bottom: 170, right: 20, backgroundColor: "#4285F4", padding: 14, borderRadius: 50, elevation: 5, shadowColor: "#000", shadowOpacity: 0.2, shadowRadius: 3 },
+  recenterButton: { position: "absolute", bottom: 220, right: 20, backgroundColor: "#d32f2f", padding: 14, borderRadius: 50, elevation: 5, shadowColor: "#000", shadowOpacity: 0.2, shadowRadius: 3 },
+  aiButton: { position: "absolute", bottom: 150, right: 20, backgroundColor: "#4285F4", padding: 14, borderRadius: 50, elevation: 5, shadowColor: "#000", shadowOpacity: 0.2, shadowRadius: 3 },
+  logoutButton: { position: "absolute", bottom: 80, right: 20, backgroundColor: "#555", padding: 14, borderRadius: 50, elevation: 5, shadowColor: "#000", shadowOpacity: 0.2, shadowRadius: 3 },
+  topBar: { position: "absolute", left: 0, right: 0, flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: "#fff", paddingHorizontal: 16, paddingVertical: 8, zIndex: 60, shadowColor: "#000", shadowOpacity: 0.1, shadowRadius: 4, elevation: 6, borderBottomLeftRadius: 12, borderBottomRightRadius: 12 },
+  controls: { position: "absolute", left: 12, right: 12, zIndex: 50, flexDirection: "row", alignItems: "center", backgroundColor: "rgba(255,255,255,0.95)", borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4, shadowColor: "#000", shadowOpacity: 0.15, shadowRadius: 4, elevation: 5 },
+  logoWrapper: { marginRight: 8, justifyContent: "center", alignItems: "center" },
+  logo: { width: 36, height: 36, marginLeft: 2 },
+  pickerContainer: { flex: 1, borderWidth: 1, borderColor: "#ccc", borderRadius: 8, marginRight: 8, height: 50, backgroundColor: "#fff" },
 });

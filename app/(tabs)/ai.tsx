@@ -7,7 +7,7 @@ import { addDoc, collection, getDocs, orderBy, query, serverTimestamp, Timestamp
 import { DateTime } from "luxon";
 import OpenAI from "openai";
 import React, { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../../context/AuthContext";
@@ -278,7 +278,7 @@ export default function AIAgentScreen() {
           show("Report submitted. Thank you for helping keep your community safe.");
           setPending(null);
           setTimeout(() => {
-            router.replace("/(tabs)/map?fromReport=true");
+            router.replace("/(tabs)?fromReport=true");
           }, 1500);
           return;
         }
@@ -369,21 +369,28 @@ export default function AIAgentScreen() {
         keyboardShouldPersistTaps="handled"
         >
         <View style={styles.headerRow}>
-            <TouchableOpacity
+        <TouchableOpacity
             onPress={() => router.replace("/")}
             style={styles.backBtn}
-            >
+        >
             <Ionicons name="arrow-back-outline" size={22} color="#fff" />
-            </TouchableOpacity>
+        </TouchableOpacity>
 
+        <View style={styles.centerGroup}>
+            <Image
+            source={require("../../assets/images/EyesOnZA-logo.png")}
+            style={styles.logo}
+            resizeMode="contain"
+            />
             <Text style={styles.header}>Vigil</Text>
+        </View>
 
-            <TouchableOpacity
+        <TouchableOpacity
             onPress={() => setTtsOn((v) => !v)}
             style={[styles.smallBtn, ttsOn ? styles.smallBtnActive : null]}
-            >
+        >
             <Text style={styles.smallBtnText}>{ttsOn ? "🔊" : "🔈"}</Text>
-            </TouchableOpacity>
+        </TouchableOpacity>
         </View>
 
         <View style={styles.chatContainer}>
@@ -427,8 +434,6 @@ export default function AIAgentScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#fff" },
-  headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 16, paddingTop: 8 },
-  header: { fontSize: 20, fontWeight: "700", color: "#d32f2f" },
   smallBtn: { backgroundColor: "#eee", paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8 },
   smallBtnActive: { backgroundColor: "#d32f2f" },
   smallBtnText: { color: "#fff", fontWeight: "700" },
@@ -443,4 +448,8 @@ const styles = StyleSheet.create({
   send: { backgroundColor: "#d32f2f", borderRadius: 10, paddingHorizontal: 16, justifyContent: "center", marginLeft: 8 },
   sendText: { color: "#fff", fontWeight: "600" },
   backBtn: { backgroundColor: "#d32f2f", padding: 8, borderRadius: 8 },
+  headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 16, paddingTop: 8 },
+  centerGroup: { flexDirection: "row", alignItems: "center", justifyContent: "center", flex: 1, marginLeft: -28 }, 
+  logo: { width: 34, height: 34, marginRight: 6, backgroundColor: "#fff", borderRadius: 8 },
+  header: { fontSize: 20, fontWeight: "700", color: "#d32f2f" },
 });

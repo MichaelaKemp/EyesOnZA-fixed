@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { collection, getDocs, orderBy, query } from "firebase/firestore";
 import { DateTime } from "luxon";
 import React, { useEffect, useState } from "react";
-import { ActivityIndicator, Dimensions, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Dimensions, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { G, Line, Text as SvgText } from "react-native-svg";
 import { PieChart as SvgPieChart } from "react-native-svg-charts";
@@ -100,7 +100,14 @@ export default function StatsScreen() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#fff" }}>
       <ScrollView contentContainerStyle={styles.container}>
+        <View style={styles.headerRow}>
+        <Image
+            source={require("../../assets/images/EyesOnZA-logo.png")}
+            style={styles.logo}
+            resizeMode="contain"
+        />
         <Text style={styles.title}>Crime Statistics</Text>
+        </View>
 
         <View style={styles.filters}>
           {["all", "week", "month", "year"].map((key) => (
@@ -236,4 +243,6 @@ const styles = StyleSheet.create({
   summaryRow: { flexDirection: "row", alignItems: "center", marginBottom: 6 },
   summaryItem: { fontSize: 15, color: "#333" },
   summaryCount: { fontWeight: "700", color: "#d32f2f" },
+  headerRow: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
+  logo: { width: 34, height: 34, marginRight: 8, backgroundColor: "#fff", borderRadius: 8 },
 });
