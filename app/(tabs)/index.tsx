@@ -80,7 +80,7 @@ export default function MapScreen() {
   useEffect(() => {
     try {
       if (fromReport) {
-        router.replace(("/(tabs)/map") as any);
+        router.replace("/");
       }
     } catch (e) {
     }

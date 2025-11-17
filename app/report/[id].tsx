@@ -25,13 +25,12 @@ export default function ReportDetails() {
         } else {
           Alert.alert("Not Found", "This report no longer exists.");
           const qp = incomingLat && incomingLng ? `?fromReport=true&lat=${incomingLat}&lng=${incomingLng}` : "?fromReport=true";
-          router.replace((`/(tabs)/map${qp}`) as any);
+          router.replace((`/${qp}`) as any);
         }
       } catch (error) {
-  console.error("Error fetching report:", error);
-  Alert.alert("Error", "Failed to load report.");
-  const qpErr = incomingLat && incomingLng ? `?fromReport=true&lat=${incomingLat}&lng=${incomingLng}` : "?fromReport=true";
-  router.replace((`/(tabs)/map${qpErr}`) as any);
+        Alert.alert("Error", "Failed to load report.");
+        const qpErr = incomingLat && incomingLng ? `?fromReport=true&lat=${incomingLat}&lng=${incomingLng}` : "?fromReport=true";
+        router.replace((`/${qpErr}`) as any);
       } finally {
         setLoading(false);
       }
@@ -69,7 +68,7 @@ export default function ReportDetails() {
           style={styles.backButton}
           onPress={() => {
               const qpBack = incomingLat && incomingLng ? `?fromReport=true&lat=${incomingLat}&lng=${incomingLng}` : "?fromReport=true";
-              router.replace((`/(tabs)/map${qpBack}`) as any);
+              router.replace((`/${qpBack}`) as any);
             }}
         >
           <Text style={styles.backButtonText}>← Back to Map</Text>

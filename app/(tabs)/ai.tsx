@@ -4,11 +4,11 @@ import Constants from "expo-constants";
 import * as Location from "expo-location";
 import { useRouter } from "expo-router";
 import * as Speech from "expo-speech";
-import { addDoc, collection, getDocs, orderBy, query, serverTimestamp, Timestamp } from "firebase/firestore";
+import { addDoc, collection, getDocs, orderBy, query, serverTimestamp, Timestamp, } from "firebase/firestore";
 import { DateTime } from "luxon";
 import OpenAI from "openai";
 import React, { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Image, StyleSheet, Text, TextInput, TouchableOpacity, View, } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../../context/AuthContext";
@@ -67,14 +67,50 @@ async function geocodeLocation(location: string) {
     )}&key=${GOOGLE_MAPS_API_KEY}`;
     const res = await fetch(url);
     const data = await res.json();
-    if (data?.results?.[0]) {
-      const loc = data.results[0].geometry.location;
-      return { lat: loc.lat as number, lng: loc.lng as number };
+
+    if (!data?.results?.[0]?.geometry?.location) {
+      return null;
     }
-  } catch (err) {
-    console.error("Geocoding failed:", err);
+
+    const loc = data.results[0].geometry.location;
+    return {
+      lat: loc.lat as number,
+      lng: loc.lng as number,
+      formatted_address: data.results[0].formatted_address || location,
+    };
+  } catch {
+    return null;
   }
-  return null;
+}
+
+async function searchPlaces(queryText: string) {
+  if (!GOOGLE_MAPS_API_KEY) return null;
+
+  const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(
+    queryText + ", South Africa"
+  )}&key=${GOOGLE_MAPS_API_KEY}`;
+
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+
+    if (data.status !== "OK" || !data.results) return null;
+    return data.results;
+  } catch {
+    return null;
+  }
+}
+
+async function reverseGeocode(lat: number, lng: number) {
+  try {
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${GOOGLE_MAPS_API_KEY}`;
+    const res = await fetch(url);
+    const data = await res.json();
+
+    return data?.results?.[0]?.formatted_address || null;
+  } catch {
+    return null;
+  }
 }
 
 async function createFirestoreReport(
@@ -89,33 +125,48 @@ async function createFirestoreReport(
     if (!payload.location || /my location|current location/i.test(payload.location)) {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status === "granted") {
-        const current = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+        const current = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.High,
+        });
+
         latitude = current.coords.latitude;
         longitude = current.coords.longitude;
-        locLabel = "Current Location";
+
+        const addr = await reverseGeocode(latitude, longitude);
+        locLabel = addr || "Unknown Location";
       }
-    } else {
+    }
+
+    else {
       const geo = await geocodeLocation(payload.location);
+
       if (geo) {
         latitude = geo.lat;
         longitude = geo.lng;
+        locLabel = geo.formatted_address || payload.location;
       } else {
         const { status } = await Location.requestForegroundPermissionsAsync();
+
         if (status === "granted") {
-          const current = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+          const current = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.High,
+          });
+
           latitude = current.coords.latitude;
           longitude = current.coords.longitude;
-          locLabel = payload.location || "Current Location";
+
+          const addr = await reverseGeocode(latitude, longitude);
+          locLabel = addr || payload.location || "Unknown Location";
         }
       }
     }
-  } catch (e) {
-    console.warn("Location resolution failure:", e);
-  }
+  } catch {}
 
   let incidentDate = DateTime.now().setZone("Africa/Johannesburg").toJSDate();
   if (payload.incidentTime instanceof Date) {
-    incidentDate = DateTime.fromJSDate(payload.incidentTime).setZone("Africa/Johannesburg").toJSDate();
+    incidentDate = DateTime.fromJSDate(payload.incidentTime)
+      .setZone("Africa/Johannesburg")
+      .toJSDate();
   } else if (typeof payload.incidentTime === "string") {
     const lower = payload.incidentTime.toLowerCase();
     const parsed = DateTime.fromISO(payload.incidentTime, { zone: "Africa/Johannesburg" });
@@ -129,7 +180,7 @@ async function createFirestoreReport(
     }
   }
 
-  await addDoc(collection(db, "reports"), {
+  const firestorePayload = {
     title: payload.title,
     category: payload.title,
     description: payload.description,
@@ -140,7 +191,12 @@ async function createFirestoreReport(
     userEmail: payload.anonymous ? null : userMeta.userEmail,
     incidentTime: Timestamp.fromDate(incidentDate),
     createdAt: serverTimestamp(),
-  });
+  };
+
+  try {
+    await addDoc(collection(db, "reports"), firestorePayload);
+  } catch {
+  }
 }
 
 async function listRecentHuman(limit = 5): Promise<string> {
@@ -155,14 +211,32 @@ async function listRecentHuman(limit = 5): Promise<string> {
       "Recent Reports:\n" +
       limited.map((r) => `• ${r.title || "Incident"} — ${r.location || "Unknown"}`).join("\n")
     );
-  } catch {
+  } catch (err) {
     return "Couldn't read recent reports right now.";
   }
 }
 
-function seemsLikeIncident(t: string) {
-  const l = t.toLowerCase();
-  return /(theft|stole|robber|mugging|assault|vandal|trespass|drug|traffic|hijack|break[- ]?in|suspicious)/i.test(l);
+async function isIncident(text: string) {
+  try {
+    const completion = await client.chat.completions.create({
+      model: "gpt-4o-mini",
+      temperature: 0,
+      messages: [
+        {
+          role: "system",
+          content:
+            "Respond only with 'yes' or 'no'. Is the user describing a crime, safety issue, emergency, suspicious activity, or harmful incident?",
+        },
+        { role: "user", content: text },
+      ],
+    });
+
+    const answer = completion.choices[0].message?.content?.toLowerCase().trim();
+    return answer === "yes";
+  } catch (err) {
+    console.error("Incident detection error:", err);
+    return false;
+  }
 }
 
 export default function AIAgentScreen() {
@@ -258,7 +332,15 @@ export default function AIAgentScreen() {
     try {
       if (pending) {
         if (/^(yes|y|confirm|submit|proceed)$/i.test(userMsg)) {
-          await createFirestoreReport(pending, { userName, userEmail });
+
+          try {
+            await createFirestoreReport(pending, { userName, userEmail });
+          } catch (err) {
+            show("Something went wrong saving your report. Please try again.");
+            setLoading(false);
+            return;
+          }
+
           show("Report submitted. Thank you for helping keep your community safe.");
           setPending(null);
           setTimeout(() => router.replace("/(tabs)?fromReport=true"), 1500);
@@ -307,7 +389,59 @@ export default function AIAgentScreen() {
         return;
       }
 
-      if (seemsLikeIncident(userMsg)) {
+      if (/list\b.*reports\b.*in\b/i.test(userMsg)) {
+        const area = userMsg.replace(/list\b.*reports\b.*in\b/i, "").trim();
+
+        const places = await searchPlaces(area);
+
+        if (!places || places.length === 0) {
+          show(`I couldn’t find an area named "${area}". Try another landmark or suburb.`);
+          return;
+        }
+
+        const first = places[0];
+        const loc = first.geometry.location;
+        const areaName = first.formatted_address;
+
+        const snap = await getDocs(collection(db, "reports"));
+        const items: Report[] = snap.docs.map((d) => ({ ...(d.data() as Report), id: d.id }));
+
+        const near = items.filter((r) => {
+          if (!r.latitude || !r.longitude) return false;
+          const dx = r.latitude - loc.lat;
+          const dy = r.longitude - loc.lng;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          return dist < 0.1; // very rough ~10km-ish filter
+        });
+
+        if (near.length === 0) {
+          show(`No reports found near **${areaName}**.`);
+          return;
+        }
+
+        const summary =
+          `Reports near **${areaName}**:\n` +
+          near
+            .map(
+              (r) =>
+                `• ${r.title || "Incident"} — ${
+                  r.location || "Unknown location"
+                }`
+            )
+            .join("\n");
+
+        show(summary);
+        return;
+      }
+
+      if (/^list\b.*reports\b/i.test(userMsg) || /show\b.*reports\b/i.test(userMsg)) {
+        const out = await listRecentHuman(5);
+        show(out);
+        return;
+      }
+
+      if (await isIncident(userMsg)) {
+
         const completion = await client.chat.completions.create({
           model: "gpt-4o-mini",
           temperature: 0.2,
@@ -324,8 +458,11 @@ export default function AIAgentScreen() {
           response_format: { type: "json_object" },
         });
 
+        const raw = completion.choices[0].message?.content || "{}";
+
         try {
-          const parsed = JSON.parse(completion.choices[0].message?.content || "{}");
+          const parsed = JSON.parse(raw);
+
           const extracted: PendingReport = {
             title: parsed.title || "Other",
             category: parsed.title || "Other",
@@ -339,13 +476,10 @@ export default function AIAgentScreen() {
           setPending(extracted);
           confirmSummary(extracted);
           return;
-        } catch {}
-      }
-
-      if (/^list\b.*reports\b/i.test(userMsg) || /show\b.*reports\b/i.test(userMsg)) {
-        const out = await listRecentHuman(5);
-        show(out);
-        return;
+        } catch (err) {
+          show("I couldn’t understand the incident details clearly. Please describe it again.");
+          return;
+        }
       }
 
       const completion = await client.chat.completions.create({
@@ -358,10 +492,11 @@ export default function AIAgentScreen() {
         ],
       });
 
-      const reply = completion.choices[0].message?.content?.trim() || "I’m focused on safety and reports.";
+      const reply =
+        completion.choices[0].message?.content?.trim() ||
+        "I’m focused on safety and reports.";
       show(reply);
     } catch (err) {
-      console.error(err);
       show("Something went wrong. Please try again.");
     } finally {
       setLoading(false);
