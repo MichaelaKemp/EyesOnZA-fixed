@@ -13,6 +13,7 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../../context/AuthContext";
 import { db } from "../../firebaseConfig";
+import { toSA } from "../../utils/time";
 
 const OPENAI_API_KEY = Constants.expoConfig?.extra?.OPENAI_API_KEY;
 const GOOGLE_MAPS_API_KEY = Constants.expoConfig?.extra?.GOOGLE_MAPS_API_KEY;
@@ -113,6 +114,50 @@ async function reverseGeocode(lat: number, lng: number) {
   }
 }
 
+export function parseNaturalTime(input: string) {
+  if (!input) return DateTime.now().setZone("Africa/Johannesburg");
+
+  input = input
+    .replace(/\babout\b/gi, "")
+    .replace(/\baround\b/gi, "")
+    .replace(/\broughly\b/gi, "")
+    .replace(/\bnearly\b/gi, "")
+    .replace(/\balmost\b/gi, "")
+    .replace(/\bjust\b/gi, "")
+    .trim();
+
+  const now = DateTime.now().setZone("Africa/Johannesburg");
+  const lower = input.toLowerCase().trim();
+
+  if (lower === "now") return now;
+
+  const min = lower.match(/(\d+)\s*(min|mins|minute|minutes)\s*(ago)?/);
+  if (min) return now.minus({ minutes: Number(min[1]) });
+
+  const hr = lower.match(/(\d+)\s*(hr|hrs|hour|hours)\s*(ago)?/);
+  if (hr) return now.minus({ hours: Number(hr[1]) });
+
+  const sec = lower.match(/(\d+)\s*(sec|secs|second|seconds)\s*(ago)?/);
+  if (sec) return now.minus({ seconds: Number(sec[1]) });
+
+  if (lower.startsWith("yesterday")) {
+    const time = lower.replace("yesterday", "").trim();
+    const parsed = DateTime.fromFormat(time, "HH:mm", { zone: "Africa/Johannesburg" });
+    if (parsed.isValid) return parsed.minus({ days: 1 });
+    return now.minus({ days: 1 });
+  }
+
+  const iso = DateTime.fromISO(input, { zone: "Africa/Johannesburg" });
+  if (iso.isValid) return iso;
+
+  const millis = Date.parse(input);
+  if (!isNaN(millis)) {
+    return DateTime.fromMillis(millis).setZone("Africa/Johannesburg");
+  }
+
+  return now;
+}
+
 async function createFirestoreReport(
   payload: PendingReport,
   userMeta: { userName: string; userEmail: string | null }
@@ -162,23 +207,19 @@ async function createFirestoreReport(
     }
   } catch {}
 
-  let incidentDate = DateTime.now().setZone("Africa/Johannesburg").toJSDate();
+  let incidentDateDT = DateTime.now().setZone("Africa/Johannesburg");
+
   if (payload.incidentTime instanceof Date) {
-    incidentDate = DateTime.fromJSDate(payload.incidentTime)
-      .setZone("Africa/Johannesburg")
-      .toJSDate();
+    incidentDateDT = DateTime.fromJSDate(payload.incidentTime).setZone("Africa/Johannesburg");
   } else if (typeof payload.incidentTime === "string") {
-    const lower = payload.incidentTime.toLowerCase();
-    const parsed = DateTime.fromISO(payload.incidentTime, { zone: "Africa/Johannesburg" });
-    const fallback = Date.parse(payload.incidentTime);
-    if (lower === "now") {
-      incidentDate = DateTime.now().setZone("Africa/Johannesburg").toJSDate();
-    } else if (parsed.isValid) {
-      incidentDate = parsed.toJSDate();
-    } else if (!isNaN(fallback)) {
-      incidentDate = DateTime.fromMillis(fallback).setZone("Africa/Johannesburg").toJSDate();
-    }
+    incidentDateDT = parseNaturalTime(payload.incidentTime);
   }
+
+  if (!incidentDateDT || !incidentDateDT.isValid) {
+    throw new Error("INVALID_TIME_FORMAT");
+  }
+
+  const incidentDate = incidentDateDT.toJSDate();
 
   const firestorePayload = {
     title: payload.title,
@@ -281,22 +322,19 @@ export default function AIAgentScreen() {
   };
 
   const confirmSummary = (p: PendingReport) => {
-    const timeText =
-      p.incidentTime instanceof Date
-        ? DateTime.fromJSDate(p.incidentTime)
-            .setZone("Africa/Johannesburg")
-            .toLocaleString(DateTime.DATETIME_MED)
-        : p.incidentTime || "now";
+    const dt = toSA(p.incidentTime);
+    const timeText = dt ? dt.toLocaleString(DateTime.DATETIME_MED) : "now";
 
     const summary =
-      `Here’s what I understood:\n` +
-      `• Incident: ${p.title}\n` +
+      `Please confirm this report:\n` +
+      `• Title: ${p.title}\n` +
       `• Location: ${p.location}\n` +
       `• Time: ${timeText}\n` +
       `• Anonymous: ${p.anonymous ? "Yes" : "No"}\n` +
       `• Details: ${p.description}\n\n` +
-      `Would you like to submit this report? (yes / no)\n` +
-      `You can also edit: title: Theft | location: my location | time: yesterday 21:00 | anonymous: yes`;
+      `Reply "yes" to submit or "no" to cancel.\n` +
+      `You can edit any field. Example:\n` +
+      `title | location | time | details | anonymous: yes/no`;
 
     show(summary);
   };
@@ -449,9 +487,39 @@ export default function AIAgentScreen() {
             {
               role: "system",
               content: `
-              You are Vigil. Extract ONE incident.
-              Return strict JSON: {"title":string,"description":string,"location":string,"incidentTime":string|null,"anonymous":boolean,"category":string|null}
-            `,
+                You are Vigil. Extract ONE incident.
+
+                CRITICAL RULES ABOUT "incidentTime":
+                - The user may describe time in natural language (e.g., "minutes ago").
+                - You MUST preserve the natural-language format.
+                - NEVER convert to a calendar date such as "5 Oct 2023".
+                - NEVER output full ISO timestamps such as "2025-02-01T15:00".
+                - ALWAYS use digits (e.g., "2 minutes ago", NOT "two minutes ago").
+
+                ACCEPTABLE FORMATS (ONLY these forms allowed):
+                1. "now"
+                2. "[number] seconds ago"
+                3. "[number] minutes ago" or "[number] mins ago"
+                4. "[number] hours ago"
+                5. "yesterday HH:mm" (24-hour format only)
+
+                STRICTLY FORBIDDEN:
+                Calendar dates of any kind ("5 October 2023", "Oct 5", "05/10/2023")
+                ISO timestamps ("2025-02-01T15:00")
+                Ambiguous phrases ("earlier", "this morning", "tonight", "yesterday evening")
+                Spelled-out numbers ("two minutes ago")
+                Mixed formats ("now (2 minutes ago)")
+                
+                ALWAYS remove words like:
+                "about", "around", "roughly", "almost", "nearly", "just", "approximately"
+
+                RULE:
+                If the user does not mention any time → return "now".
+
+                Return STRICT JSON only:
+                {"title":string,"description":string,"location":string,
+                "incidentTime":string,"anonymous":boolean,"category":string}
+                `,
             },
             { role: "user", content: userMsg },
           ],
