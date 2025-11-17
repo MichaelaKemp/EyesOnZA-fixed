@@ -343,6 +343,7 @@ export default function MapScreen() {
             <Picker.Item label="Drug Activity" value="Drug Activity" />
             <Picker.Item label="Trespassing" value="Trespassing" />
             <Picker.Item label="Traffic Violation" value="Traffic Violation" />
+            <Picker.Item label="Other" value="Other" />
           </Picker>
         </View>
 

@@ -240,6 +240,30 @@ async function createFirestoreReport(
   }
 }
 
+const CATEGORY_MAP = [
+  { cat: "Theft", words: ["steal", "stole", "stolen", "break", "broken into", "snatched", "theft", "rob my car"] },
+  { cat: "Vandalism", words: ["vandal", "damage", "smashed", "graffiti", "spray paint", "keyed car"] },
+  { cat: "Assault", words: ["assault", "fight", "hit", "punched", "stab", "attack", "beaten"] },
+  { cat: "Robbery", words: ["robbery", "robbed", "mugged", "held at gunpoint", "gunpoint"] },
+  { cat: "Drug Activity", words: ["drug", "dealer", "deal", "selling drugs", "pills"] },
+  { cat: "Trespassing", words: ["trespass", "trespassing", "in my yard", "on my property"] },
+  { cat: "Traffic Violation", words: ["speeding", "reckless", "drunk driving", "hit and run", "dangerous driving"] },
+  { cat: "Suspicious Activity", words: ["suspicious", "lurking", "following", "strange", "acting weird", "watching me"] },
+];
+
+function classifyCategory(text: string) {
+  if (!text) return "Other";
+  const lower = text.toLowerCase();
+
+  for (const rule of CATEGORY_MAP) {
+    if (rule.words.some((w) => lower.includes(w))) {
+      return rule.cat;
+    }
+  }
+
+  return "Other";
+}
+
 async function listRecentHuman(limit = 5): Promise<string> {
   try {
     const q = query(collection(db, "reports"), orderBy("createdAt", "desc"));
@@ -531,9 +555,14 @@ export default function AIAgentScreen() {
         try {
           const parsed = JSON.parse(raw);
 
+          const combinedText =
+            `${parsed.title || ""} ${parsed.description || ""}`.trim();
+
+          const category = classifyCategory(combinedText);
+
           const extracted: PendingReport = {
-            title: parsed.title || "Other",
-            category: parsed.title || "Other",
+            title: category,
+            category,
             description: parsed.description || "No description provided.",
             location: parsed.location || "my location",
             incidentTime: parsed.incidentTime || "now",
