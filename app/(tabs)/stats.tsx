@@ -5,7 +5,6 @@ import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Dimensions, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { G, Line, Text as SvgText } from "react-native-svg";
-import { PieChart as SvgPieChart } from "react-native-svg-charts";
 import { db } from "../../firebaseConfig";
 
 export default function StatsScreen() {

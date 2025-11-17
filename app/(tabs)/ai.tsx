@@ -11,6 +11,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Image, StyleSheet, Text, TextInput, TouchableOpacity, View, } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 import { SafeAreaView } from "react-native-safe-area-context";
+import Toast from "react-native-toast-message";
 import { useAuth } from "../../context/AuthContext";
 import { db } from "../../firebaseConfig";
 import { toSA } from "../../utils/time";
@@ -289,8 +290,26 @@ async function isIncident(text: string) {
       messages: [
         {
           role: "system",
-          content:
-            "Respond only with 'yes' or 'no'. Is the user describing a crime, safety issue, emergency, suspicious activity, or harmful incident?",
+          content: `
+            Respond only with "yes" or "no".
+
+            You MUST answer "yes" ONLY when the user is clearly describing:
+            - a crime that happened to them
+            - a dangerous event they personally witnessed
+            - suspicious activity they personally observed
+            - a harmful incident that actually occurred
+
+            You MUST answer "no" for:
+            - asking for emergency numbers or contact info
+            - general safety questions (“is it safe here?”)
+            - general crime discussion not involving a real event
+            - hypothetical situations (“what if someone robbed me?”)
+            - tips, advice, or prevention questions
+            - asking what to do in an emergency
+            - any message that is NOT a real incident being reported
+
+            If the user is **not reporting something that actually happened**, answer "no".
+          `
         },
         { role: "user", content: text },
       ],
@@ -394,7 +413,6 @@ export default function AIAgentScreen() {
     try {
       if (pending) {
         if (/^(yes|y|confirm|submit|proceed)$/i.test(userMsg)) {
-
           try {
             await createFirestoreReport(pending, { userName, userEmail });
           } catch (err) {
@@ -405,7 +423,13 @@ export default function AIAgentScreen() {
 
           show("Report submitted. Thank you for helping keep your community safe.");
           setPending(null);
-          setTimeout(() => router.replace("/(tabs)?fromReport=true"), 1500);
+
+          Toast.show({
+            type: "eyesOnZA",
+            text1: "Report Submitted",
+            text2: "Tap to go back to Map",
+            onPress: () => router.replace("/(tabs)?fromReport=true"),
+          });
           return;
         }
 
@@ -415,36 +439,77 @@ export default function AIAgentScreen() {
           return;
         }
 
-        const edits = userMsg.split(/[,|]/).map((s) => s.trim());
+        const editCompletion = await client.chat.completions.create({
+          model: "gpt-4o-mini",
+          temperature: 0,
+          messages: [
+            {
+              role: "system",
+              content: `
+                You are Vigil, a precise assistant.
+
+                From the user's message, determine ONLY what change they want to make to the pending report.
+
+                Return STRICT JSON:
+                {
+                "field": "title" | "description" | "location" | "time" | "anonymous" | "none",
+                "mode": "replace" | "append",
+                "value": string
+                }
+
+                RULES:
+                - If the user wants to add something to description, use mode "append".
+                - If they want to fully rewrite description, use "replace".
+                - If the user wants to change title, location, time, or anonymity, set field accordingly.
+                - If you detect no change request → field="none".
+                `
+            },
+            { role: "user", content: userMsg }
+          ],
+          response_format: { type: "json_object" }
+        });
+
+        let edit;
+        try {
+          edit = JSON.parse(editCompletion.choices[0].message?.content ?? "{}");
+        } catch {
+          edit = { field: "none" };
+        }
+
         const next = { ...pending };
 
-        edits.forEach((e) => {
-          const m = e.match(/^(title|category|description|location|time|anonymous)\s*[:=]\s*(.+)$/i);
-          if (!m) return;
+        switch (edit.field) {
+          case "title":
+            next.title = edit.value;
+            next.category = edit.value;
+            break;
 
-          const field = m[1].toLowerCase();
-          const val = m[2].trim();
+          case "description":
+            if (edit.mode === "append") {
+              next.description = (next.description || "") + " " + edit.value;
+            } else {
+              next.description = edit.value;
+            }
+            break;
 
-          switch (field) {
-            case "anonymous":
-              next.anonymous = /^(true|yes|y|on)$/i.test(val);
-              break;
-            case "time":
-              next.incidentTime = val || "now";
-              break;
-            case "title":
-            case "category":
-              next.title = val || "Other";
-              next.category = next.title;
-              break;
-            case "location":
-              next.location = val || "my location";
-              break;
-            case "description":
-              next.description = val || next.description;
-              break;
-          }
-        });
+          case "location":
+            next.location = edit.value || "my location";
+            break;
+
+          case "time":
+            next.incidentTime = edit.value || "now";
+            break;
+
+          case "anonymous":
+            next.anonymous = /^true|yes|y|on$/i.test(edit.value);
+            break;
+
+          case "none":
+          default:
+            show("Okay. Let me know if you’d like to adjust anything in this report.");
+            setLoading(false);
+            return;
+        }
 
         setPending(next);
         confirmSummary(next);
