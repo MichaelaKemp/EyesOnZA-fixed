@@ -1,31 +1,60 @@
-import { Ionicons } from "@expo/vector-icons";
 import { collection, getDocs, orderBy, query } from "firebase/firestore";
 import { DateTime } from "luxon";
 import React, { useEffect, useState } from "react";
-import { ActivityIndicator, Dimensions, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View, } from "react-native";
+import { LineChart, PieChart } from "react-native-gifted-charts";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { G, Line, Text as SvgText } from "react-native-svg";
 import { db } from "../../firebaseConfig";
+
+type TimeFilter = "all" | "week" | "month" | "year";
+
+interface FirestoreTimestamp {
+  seconds: number;
+  nanoseconds?: number;
+}
+
+interface Report {
+  id: string;
+  title?: string;
+  description?: string;
+  createdAt?: FirestoreTimestamp;
+}
+
+interface TimelinePoint {
+  label: string;
+  value: number;
+  fullDate?: string;
+}
+
+type TimelineMap = Record<string, (Report & { created: DateTime })[]>;
 
 export default function StatsScreen() {
   const [loading, setLoading] = useState(true);
-  const [reports, setReports] = useState<any[]>([]);
-  const [timeFilter, setTimeFilter] = useState("all");
+  const [reports, setReports] = useState<Report[]>([]);
+  const [timeFilter, setTimeFilter] = useState<TimeFilter>("all");
+  const [timelineExpanded, setTimelineExpanded] = useState(false);
 
   useEffect(() => {
     const fetchReports = async () => {
       const q = query(collection(db, "reports"), orderBy("createdAt", "desc"));
       const snap = await getDocs(q);
-      const items = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      const items: Report[] = snap.docs.map((doc) => ({
+        id: doc.id,
+        ...(doc.data() as any),
+      }));
       setReports(items);
       setLoading(false);
     };
+
     fetchReports();
   }, []);
 
   const filteredReports = reports.filter((r) => {
-    if (!r.createdAt || !r.createdAt.seconds) return false;
-    const created = DateTime.fromSeconds(r.createdAt.seconds).setZone("Africa/Johannesburg");
+    if (!r.createdAt?.seconds) return false;
+
+    const created = DateTime.fromSeconds(r.createdAt.seconds).setZone(
+      "Africa/Johannesburg"
+    );
     const now = DateTime.now().setZone("Africa/Johannesburg");
 
     switch (timeFilter) {
@@ -52,9 +81,11 @@ export default function StatsScreen() {
     "Other",
   ];
 
-  const countByCategory: Record<string, number> = filteredReports.reduce((acc, r) => {
+  const countByCategory = filteredReports.reduce((acc, r) => {
     const raw = (r.title || "").trim();
-    const match = OFFICIAL_CATEGORIES.find((c) => c.toLowerCase() === raw.toLowerCase());
+    const match = OFFICIAL_CATEGORIES.find(
+      (c) => c.toLowerCase() === raw.toLowerCase()
+    );
     const category = match || "Other";
     acc[category] = (acc[category] || 0) + 1;
     return acc;
@@ -63,8 +94,6 @@ export default function StatsScreen() {
   OFFICIAL_CATEGORIES.forEach((cat) => {
     if (!countByCategory[cat]) countByCategory[cat] = 0;
   });
-
-  const totalCrimes = filteredReports.length;
 
   const COLORS = [
     "#e57373",
@@ -78,14 +107,47 @@ export default function StatsScreen() {
     "#90a4ae",
   ];
 
-  const pieData = OFFICIAL_CATEGORIES.map((cat, i) => {
-    const count = Number(countByCategory[cat] || 0);
-    return {
-      name: cat,
-      count,
-      color: COLORS[i % COLORS.length],
-    };
-  }).filter((c) => c.count > 0);
+  const pieData = OFFICIAL_CATEGORIES.map((cat, i) => ({
+    value: countByCategory[cat],
+    color: COLORS[i],
+    text: cat,
+  })).filter((item) => item.value > 0);
+
+  const timeline: TimelineMap = filteredReports
+    .map((r) => ({
+      ...r,
+      created: DateTime.fromSeconds(r.createdAt!.seconds).setZone(
+        "Africa/Johannesburg"
+      ),
+    }))
+    .sort((a, b) => b.created.toMillis() - a.created.toMillis())
+    .reduce((groups, rpt) => {
+      const day = rpt.created.toFormat("dd MMM yyyy");
+      if (!groups[day]) groups[day] = [];
+      groups[day].push(rpt);
+      return groups;
+    }, {} as TimelineMap);
+
+  const timelineData: TimelinePoint[] = getTimelineData(
+    filteredReports,
+    timeFilter
+  );
+
+  let lineData = timelineData.map((d) => ({
+    value: d.value,
+    label: d.label,
+    dataPointText: String(d.value),
+  }));
+
+  if (lineData.length === 0) {
+    lineData = [{ value: 0, label: " ", dataPointText: "0" }];
+  }
+
+  const maxValueSafe =
+    lineData.length > 1 ? Math.max(...lineData.map((p) => p.value)) + 2 : 5;
+
+  const spacingSafe =
+    lineData.length > 12 ? 35 : lineData.length > 1 ? 50 : 80;
 
   if (loading) {
     return (
@@ -100,20 +162,23 @@ export default function StatsScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: "#fff" }}>
       <ScrollView contentContainerStyle={styles.container}>
         <View style={styles.headerRow}>
-        <Image
+          <Image
             source={require("../../assets/images/EyesOnZA-logo.png")}
             style={styles.logo}
             resizeMode="contain"
-        />
-        <Text style={styles.title}>Crime Statistics</Text>
+          />
+          <Text style={styles.title}>Crime Statistics</Text>
         </View>
 
         <View style={styles.filters}>
-          {["all", "week", "month", "year"].map((key) => (
+          {(["all", "week", "month", "year"] as TimeFilter[]).map((key) => (
             <TouchableOpacity
               key={key}
               onPress={() => setTimeFilter(key)}
-              style={[styles.filterBtn, timeFilter === key && styles.filterActive]}
+              style={[
+                styles.filterBtn,
+                timeFilter === key && styles.filterActive,
+              ]}
             >
               <Text
                 style={[
@@ -121,87 +186,81 @@ export default function StatsScreen() {
                   timeFilter === key && { color: "#fff" },
                 ]}
               >
-                {key === "all" ? "All Time" : key.charAt(0).toUpperCase() + key.slice(1)}
+                {key === "all"
+                  ? "All Time"
+                  : key.charAt(0).toUpperCase() + key.slice(1)}
               </Text>
             </TouchableOpacity>
           ))}
         </View>
 
-        <View style={styles.summaryCard}>
-          <Ionicons name="stats-chart-outline" size={24} color="#d32f2f" />
-          <Text style={styles.summaryText}>
-            {totalCrimes} total crimes {timeFilter !== "all" ? "in this " + timeFilter : "to date"}
-          </Text>
+        <View style={styles.timelineHeader}>
+          <Text style={styles.sectionTitle}>Crime Timeline</Text>
+
+          <TouchableOpacity
+            onPress={() => setTimelineExpanded(!timelineExpanded)}
+            style={styles.expandBtn}
+          >
+            <Text style={styles.expandBtnText}>
+              {timelineExpanded ? "Collapse" : "Expand"}
+            </Text>
+          </TouchableOpacity>
         </View>
 
-        <View style={styles.chartWrapper}>
-          <SvgPieChart
-            style={{
-              height: 260,
-              width: Dimensions.get("window").width - 40,
-            }}
-            outerRadius="78%"
-            innerRadius="35%"
-            valueAccessor={({ item }: { item: { value: number } }) => item.value}
-            data={Object.entries(countByCategory).map(([name, count], i) => ({
-              key: name,
-              value: count,
-              svg: { fill: COLORS[i % COLORS.length] },
-              arc: { cornerRadius: 5 },
-            }))}
-          >
-            {({
-              slices,
-              height: chartHeight,
-              width: chartWidth,
-            }: {
-              slices: any[];
-              height: number;
-              width: number;
-            }) => {
-              return slices.map((slice, index) => {
-                const { data, endAngle, startAngle } = slice;
-                const midAngle = (startAngle + endAngle) / 2;
-                const radius = 105;
+        {timelineExpanded && (
+          <View style={{ marginBottom: 10 }}>
+            {Object.entries(timeline).map(([day, items]) => (
+              <View key={day} style={styles.timelineDay}>
+                <Text style={styles.timelineDate}>{day}</Text>
 
-                const x1 = chartWidth / 2 + radius * Math.cos(midAngle - Math.PI / 2);
-                const y1 = chartHeight / 2 + radius * Math.sin(midAngle - Math.PI / 2);
-                const x2 =
-                  chartWidth / 2 + (radius + 25) * Math.cos(midAngle - Math.PI / 2);
-                const y2 =
-                  chartHeight / 2 + (radius + 25) * Math.sin(midAngle - Math.PI / 2);
+                {items.map((r) => (
+                  <View key={r.id} style={styles.timelineItem}>
+                    <Text style={styles.timelineTitle}>{r.title}</Text>
+                    <Text style={styles.timelineDesc}>
+                      {r.description || "No description"}
+                    </Text>
+                    <Text style={styles.timelineTime}>
+                      {r.created.toFormat("HH:mm")}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            ))}
+          </View>
+        )}
 
-                const textX =
-                  chartWidth / 2 + (radius + 45) * Math.cos(midAngle - Math.PI / 2);
-                const textY =
-                  chartHeight / 2 + (radius + 45) * Math.sin(midAngle - Math.PI / 2);
+        <Text style={styles.sectionTitle}>
+          {timeFilter === "week" && "Crime Trend (Past 7 Days)"}
+          {timeFilter === "month" && "Crime Trend (Past 30 Days)"}
+          {timeFilter === "year" && "Crime Trend (Past 12 Months)"}
+          {timeFilter === "all" && "Crime Trend (By Month)"}
+        </Text>
 
-                return (
-                  <G key={`label-${index}`}>
-                    <Line
-                      x1={x1}
-                      y1={y1}
-                      x2={x2}
-                      y2={y2}
-                      stroke={data.svg.fill}
-                      strokeWidth={2}
-                    />
-                    <SvgText
-                      x={textX}
-                      y={textY}
-                      fontSize="12"
-                      fontWeight="600"
-                      fill="#333"
-                      textAnchor={textX > chartWidth / 2 ? "start" : "end"}
-                      alignmentBaseline="middle"
-                    >
-                      {`${data.key} (${data.value})`}
-                    </SvgText>
-                  </G>
-                );
-              });
-            }}
-          </SvgPieChart>
+        <LineChart
+          data={lineData}
+          curved={lineData.length > 2}
+          thickness={3}
+          color="#d32f2f"
+          hideDataPoints={false}
+          dataPointsColor="#d32f2f"
+          spacing={spacingSafe}
+          yAxisTextStyle={{ color: "#555" }}
+          xAxisLabelTextStyle={{ color: "#555", fontSize: 11 }}
+          noOfSections={5}
+          maxValue={maxValueSafe}
+        />
+
+        <Text style={styles.sectionTitle}>Crime Categories</Text>
+
+        <View style={{ alignItems: "center" }}>
+          <PieChart
+            data={pieData}
+            radius={120}
+            innerRadius={50}
+            showText
+            textColor="#333"
+            textSize={12}
+          />
         </View>
 
         <View style={styles.summaryList}>
@@ -217,7 +276,8 @@ export default function StatsScreen() {
                 }}
               />
               <Text style={styles.summaryItem}>
-                {item.name} — <Text style={styles.summaryCount}>{item.count}</Text>
+                {item.text} —{" "}
+                <Text style={styles.summaryCount}>{item.value}</Text>
               </Text>
             </View>
           ))}
@@ -227,21 +287,132 @@ export default function StatsScreen() {
   );
 }
 
+function getTimelineData(
+  reports: Report[],
+  timeFilter: TimeFilter
+): TimelinePoint[] {
+  const now = DateTime.now().setZone("Africa/Johannesburg");
+
+  if (timeFilter === "week") {
+    const days: TimelinePoint[] = [];
+
+    for (let i = 6; i >= 0; i--) {
+      const day = now.minus({ days: i });
+
+      const count = reports.filter((r) => {
+        if (!r.createdAt?.seconds) return false;
+        const created = DateTime.fromSeconds(r.createdAt.seconds).setZone(
+          "Africa/Johannesburg"
+        );
+        return (
+          created.toFormat("yyyy-MM-dd") === day.toFormat("yyyy-MM-dd")
+        );
+      }).length;
+
+      days.push({
+        label: day.toFormat("EEE"),
+        value: count,
+        fullDate: day.toFormat("yyyy-MM-dd"),
+      });
+    }
+
+    return days;
+  }
+
+  if (timeFilter === "month") {
+    const days: TimelinePoint[] = [];
+
+    for (let i = 29; i >= 0; i--) {
+      const day = now.minus({ days: i });
+
+      const count = reports.filter((r) => {
+        if (!r.createdAt?.seconds) return false;
+        const created = DateTime.fromSeconds(r.createdAt.seconds).setZone(
+          "Africa/Johannesburg"
+        );
+        return (
+          created.toFormat("yyyy-MM-dd") === day.toFormat("yyyy-MM-dd")
+        );
+      }).length;
+
+      days.push({
+        label: day.toFormat("dd MMM"), // 12 Nov
+        value: count,
+        fullDate: day.toFormat("yyyy-MM-dd"),
+      });
+    }
+
+    return days;
+  }
+
+  if (timeFilter === "year") {
+    const months: Record<string, number> = {};
+
+    for (let i = 11; i >= 0; i--) {
+      const month = now.minus({ months: i });
+      const key = month.toFormat("yyyy-MM");
+      months[key] = 0;
+
+      reports.forEach((r) => {
+        if (!r.createdAt?.seconds) return;
+        const created = DateTime.fromSeconds(r.createdAt.seconds).setZone(
+          "Africa/Johannesburg"
+        );
+        if (created.toFormat("yyyy-MM") === key) {
+          months[key]++;
+        }
+      });
+    }
+
+    return Object.entries(months).map(([key, count]) => ({
+      label: DateTime.fromISO(key + "-01").toFormat("MMM"),
+      value: count,
+      fullDate: key + "-01",
+    }));
+  }
+
+  const monthGroups: Record<string, number> = {};
+
+  reports.forEach((r) => {
+    if (!r.createdAt?.seconds) return;
+    const created = DateTime.fromSeconds(r.createdAt.seconds).setZone(
+      "Africa/Johannesburg"
+    );
+    const key = created.toFormat("yyyy-MM");
+    monthGroups[key] = (monthGroups[key] || 0) + 1;
+  });
+
+  return Object.entries(monthGroups)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, count]) => ({
+      label: DateTime.fromISO(key + "-01").toFormat("MMM yyyy"),
+      value: count,
+      fullDate: key + "-01",
+    }));
+}
+
 const styles = StyleSheet.create({
   container: { padding: 20, backgroundColor: "#fff" },
   loading: { flex: 1, justifyContent: "center", alignItems: "center" },
-  title: { fontSize: 22, fontWeight: "700", color: "#d32f2f", marginBottom: 12 },
-  filters: { flexDirection: "row", marginBottom: 10 },
+  headerRow: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
+  logo: { width: 34, height: 34, marginRight: 8, backgroundColor: "#fff", borderRadius: 8 },
+  title: { fontSize: 22, fontWeight: "700", color: "#d32f2f" },
+  filters: { flexDirection: "row", marginBottom: 16 },
   filterBtn: { borderWidth: 1, borderColor: "#ccc", borderRadius: 8, paddingVertical: 6, paddingHorizontal: 12, marginRight: 8 },
   filterActive: { backgroundColor: "#d32f2f", borderColor: "#d32f2f" },
   filterText: { color: "#d32f2f", fontWeight: "600" },
-  summaryCard: { flexDirection: "row", alignItems: "center", backgroundColor: "#f9f9f9", padding: 14, borderRadius: 10, marginBottom: 15 },
-  summaryText: { marginLeft: 10, fontSize: 16, fontWeight: "500", color: "#333" },
-  chartWrapper: { alignItems: "center", justifyContent: "center", marginVertical: 30},
-  summaryList: { borderTopWidth: 1, borderColor: "#eee", paddingTop: 12 },
+  sectionTitle: { fontSize: 20, fontWeight: "700", color: "#d32f2f", marginTop: 25, marginBottom: 10 },
+  timelineHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  timelineDay: { marginBottom: 15 },
+  timelineDate: { fontSize: 16, fontWeight: "700", color: "#222", marginBottom: 8 },
+  timelineItem: { padding: 12, backgroundColor: "#fafafa", borderRadius: 10, borderLeftWidth: 4, borderLeftColor: "#d32f2f", marginBottom: 10 },
+  timelineTitle: { fontSize: 15, fontWeight: "700", marginBottom: 3 },
+  timelineDesc: { fontSize: 13, color: "#555" },
+  timelineTime: { fontSize: 12, color: "#999", marginTop: 5 },
+  summaryList: { borderTopWidth: 1, borderColor: "#eee", paddingTop: 12, marginTop: 20 },
   summaryRow: { flexDirection: "row", alignItems: "center", marginBottom: 6 },
   summaryItem: { fontSize: 15, color: "#333" },
   summaryCount: { fontWeight: "700", color: "#d32f2f" },
-  headerRow: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
-  logo: { width: 34, height: 34, marginRight: 8, backgroundColor: "#fff", borderRadius: 8 },
+  expandBtn: { paddingHorizontal: 12, paddingVertical: 6, backgroundColor: "#d32f2f", borderRadius: 8 },
+  expandBtnText: { color: "#fff", fontWeight: "700", fontSize: 13 },
 });
