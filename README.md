@@ -31,6 +31,24 @@
 
 ---
 
+## Table of Contents
+- [About the Project](#description)
+- [Technologies & Tools](#technologies--tools)
+- [Core Features](#core-features)
+- [Installation](#installation)
+- [Firestore Structure](#firestore-structure)
+- [App Flow](#app-flow)
+- [Frontend Overview](#frontend-overview)
+- [Development Process](#development-process)
+- [Final Outcome](#final-outcome)
+- [Conclusion](#conclusion)
+- [Tools & Libraries](#tools--libraries)
+- [Developer](#developer)
+- [Licence](#licence)
+- [Acknowledgements](#acknowledgements)
+
+---
+
 ## Description
 
 EyesOnZA bridges the gap between community awareness and accessible safety reporting. It visualises incidents on an interactive map and uses **Vigil**, an AI assistant, to guide users through reporting in plain language. Vigil extracts the key details automatically and confirms them before the report is saved to Firestore.
@@ -52,9 +70,7 @@ EyesOnZA bridges the gap between community awareness and accessible safety repor
   <a href="https://firebase.google.com/" target="_blank">
     <img src="https://www.vectorlogo.zone/logos/firebase/firebase-icon.svg" alt="Firebase" width="40" height="40"/>
   </a>
-  <a href="https://openai.com/" target="_blank">
-    <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/0/04/OpenAI_Logo.svg/512px-OpenAI_Logo.svg.png" alt="OpenAI" width="70" height="40"/>
-  </a>
+  <img src="./assets/images/OpenAI-logo.png" alt="OpenAi Logo" width="40" height="40"/>
   <a href="https://developers.google.com/maps" target="_blank">
     <img src="https://www.vectorlogo.zone/logos/google_maps/google_maps-icon.svg" alt="Google Maps API" width="40" height="40"/>
   </a>
@@ -170,12 +186,82 @@ Built with **Expo** and **React Native**, EyesOnZA’s frontend focuses on clari
 
 ---
 
+## Development Process
+
+The development of EyesOnZA combined user-centred design, mobile-first interaction patterns, and real-time data workflows. The goal was to create a safety reporting tool that felt fast, intuitive, and accessible to South African communities. Below is an overview of the creative and technical decisions behind the project.
+
+### System Architecture
+
+EyesOnZA follows a lightweight Expo + Firebase architecture:
+
+- **Frontend:** Expo (React Native), Expo Router  
+- **Backend:** Firebase Firestore (NoSQL)  
+- **AI Processing:** OpenAI API (Vigil)  
+- **Maps & Geocoding:** Google Maps + Places + Geocoding API  
+- **Auth:** Firebase Authentication  
+- **State Handling:** React hooks + Firestore real-time listeners  
+- **Timezone handling:** Luxon configured for South African locale  
+
+This architecture was chosen to ensure smooth deployment, instant syncing of incident data, and compatibility across Android devices without native build complexity.
+
+### Data Flow Overview
+
+1. User input is captured via Vigil (AI chat) or manual form components.  
+2. Vigil extracts structured data from natural language using a strict JSON format.  
+3. The app validates all fields and sends to Firestore.  
+4. Map and Statistics screens subscribe to Firestore changes.  
+5. Charts and heatmaps render updates in real-time.  
+
+### AI Assistant (Vigil) – Technical Rationale
+
+Vigil was designed to reduce the cognitive load of reporting an incident:
+
+- Natural language input is parsed into structured fields  
+- The model must return strict JSON (title, description, incidentTime, location, category)  
+- Additional rules enforce correct time formatting and prevent hallucinated or defaulted dates  
+- Vigil confirms each extracted field before saving to Firestore  
+
+This makes reporting accessible even to users unfamiliar with structured form fields.
+
+### Key Technical Decisions
+
+- **Heatmap as well as cluster markers:** Heatmap better visualises community activity density.  
+- **Luxon over Moment.js:** Better reliability for timezone logic + SA format handling.  
+- **Real-time Firestore listeners:** Ensures reports appear instantly on the map.  
+- **Expo Speech:** Adds accessibility for visually impaired users.  
+- **Strict AI validation:** Prevents inaccurate or incomplete report entries.
+
+### Challenges & Solutions
+
+**1. AI extracting incomplete or incorrect report fields**  
+Solution: Enforced strict JSON schema + added confirmation dialogues.
+
+**2. Time formatting not matching SA locale**  
+Solution: Implemented Luxon with explicit `setZone("Africa/Johannesburg")`.
+
+**3. Reports replacing map markers incorrectly**  
+Solution: Added validation + a fallback location handler.
+
+**4. Slow image and map loading on older devices**  
+Solution: Deferred heavy operations using `useFocusEffect` and memoisation.
+
+The result is a stable, predictable reporting experience across devices.
+
+---
+
 ## Roadmap
 
 - Push notifications for nearby safety reports.  
-- Enhanced Google Maps API integration for Vigil (context-aware location suggestions and nearby emergency services).  
 - Deeper analytics and filtering options for the statistics view.  
 - Vigil integration within the analytics screen for contextual insights.
+
+---
+
+## Final Outcome
+
+### Demonstration Video
+
+[Demo Video](./assets/demo/demo-video.mp4)
 
 ---
 
@@ -210,5 +296,17 @@ Student — Open Window, South Africa
 **Educational Use Disclaimer**  
 This project was created as part of coursework for Interactive Development (VC300) at Open Window and is intended for portfolio presentation only.  
 Not licensed for redistribution or commercial use.
+
+---
+
+## Acknowledgements
+
+- **OpenAI** — for powering Vigil, the AI assistant.  
+- **Expo Documentation** — for navigation, debugging tools, and platform support.  
+- **Firebase Documentation** — Firestore and Authentication reference.  
+- **Google Maps Platform** — for map rendering and geocoding.  
+- **React Native community** — for libraries and troubleshooting resources.  
+- **Academic resources** from Open Window to support planning and UX decisions.  
+- **ChatGPT (OpenAI)** — for assistance with debugging, documentation, and optimisation during development.
 
 © Michaela Kemp, 2025. All rights reserved.
